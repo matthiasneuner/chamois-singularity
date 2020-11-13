@@ -1,0 +1,144 @@
+BootStrap: docker
+From: centos:8
+%setup
+    # THESE ARE DIRECTORIES REQUIRED FOR UIBK BINDS
+    mkdir $SINGULARITY_ROOTFS/scratch
+    mkdir $SINGULARITY_ROOTFS/data
+
+    # DIRECORY FOR MOOSE BINARIES
+    mkdir $SINGULARITY_ROOTFS/projects
+
+    cp -r moose ${SINGULARITY_ROOTFS}/projects/moose/
+    cp -r chamois ${SINGULARITY_ROOTFS}/projects/chamois/
+    cp -r bftUserLibrary ${SINGULARITY_ROOTFS}/projects/bftUserLibrary/
+%post
+    #################################################################################
+    #                                                                               #
+    #                               BASIC SOFTWARE                                  #
+    #                                                                               #
+    #################################################################################
+    dnf install -y gvim vim wget make git bison flex unzip libtirpc libtirpc-devel openssl-devel infiniband-diags rdma-core-devel
+
+    #################################################################################
+    #                                                                               #
+    #                               GCC 9.2                                         #
+    #                                                                               #
+    #################################################################################
+    dnf -y install gcc-toolset-9-gcc gcc-toolset-9-gcc-c++ gcc-toolset-9-gcc-gfortran 
+    source /opt/rh/gcc-toolset-9/enable
+
+    #################################################################################
+    #                                                                               #
+    #                               CMAKE 3.18                                      #
+    #                                                                               #
+    #################################################################################
+    cd $SINGULARITY_TMPDIR
+    wget https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4.tar.gz
+    tar xzf cmake-3.18.4.tar.gz
+    cd cmake-3.18.4
+    ./configure
+    make 
+    make install
+
+    #################################################################################
+    #                                                                               #
+    #                               LATEST EIGEN                                    #
+    #                                                                               #
+    #################################################################################
+    git clone https://gitlab.com/libeigen/eigen.git
+    cd eigen
+    mkdir build
+    cd build
+    cmake ../
+    make install
+
+    #################################################################################
+    #                                                                               #
+    #                               PYTHON 3.8                                      #
+    #                                                                               #
+    #################################################################################
+    dnf install -y python38 python38-devel.x86_64
+    # ln -s /usr/bin/python3 /usr/bin/python 
+
+    #################################################################################
+    #                                                                               #
+    #                               OPENMPI 4.0.2                                   #
+    #                                                                               #
+    #################################################################################
+    dnf install -y openmpi openmpi-devel
+
+    #################################################################################
+    #                                                                               #
+    #                               CLEANUP                                         #
+    #                                                                               #
+    #################################################################################
+    dnf clean all && rm -rf /var/cache/dnf
+
+    #################################################################################
+    #                                                                               #
+    #                               ENV. VARS                                       #
+    #                                                                               #
+    #################################################################################
+    export PATH=$PATH:/usr/lib64/openmpi/bin/
+    export CC=mpicc
+    export CXX=mpicxx
+    export F90=mpif90
+    export F77=mpif77
+    export FC=mpif90
+
+    #################################################################################
+    #                               BUILD PETSC                                     #
+    #                               BUILD LIBMESH (OPT ONLY)                        #
+    #                               BUILD MOOSE TESTS                               #
+    #################################################################################
+    cd /projects/moose
+    ./scripts/update_and_rebuild_petsc.sh
+    METHODS=opt ./scripts/update_and_rebuild_libmesh.sh
+
+    #################################################################################
+    #                                                                               #
+    #                               BUILD UIBK MATERIALS                            #
+    #                                                                               #
+    #################################################################################
+    cd /projects/bftUserLibrary
+    cmake .
+    make -j8
+
+    #################################################################################
+    #                                                                               #
+    #                               BUILD CHAMOIS                                   #
+    #                                                                               #
+    #################################################################################
+    cd /projects/chamois
+    make clean
+    BFT_USER_LIBRARY=/projects/bftUserLibrary make -j8
+
+    #################################################################################
+    #                                                                               #
+    #                               FINISH                                          #
+    #                                                                               #
+    #################################################################################
+
+%environment
+    # LOCALE
+    export LC_ALL=C
+
+    # MAKE OPENMPI AVAILABLE
+    export PATH=$PATH:/usr/lib64/openmpi/bin/
+
+    # MAKE GCC 9 AVAILABLE
+    source /opt/rh/gcc-toolset-9/enable
+
+    # SET COMPILERS FOR MOOSE
+    export CC=mpicc
+    export CXX=mpicxx
+    export F90=mpif90
+    export F77=mpif77
+    export FC=mpif90
+
+    # ENSURE THAT NOT OPENMP PARALLELISM IS USED
+    # USUALLY A GOOD IDEA FOR MPI PARALLELISM
+    export OMP_NUM_THREADS=1
+
+%labels
+    Maintainer matthiasneuner
