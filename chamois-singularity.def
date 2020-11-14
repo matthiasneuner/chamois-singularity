@@ -5,11 +5,14 @@ From: centos:8
     mkdir $SINGULARITY_ROOTFS/scratch
     mkdir $SINGULARITY_ROOTFS/data
 
-    # DIRECORY FOR MOOSE BINARIES
+    # THIS IS THE DIRECTORY FOR ALL MOOSE RELATED BINARIES
     mkdir $SINGULARITY_ROOTFS/projects
 
+    # COPY MOOSE
     cp -r moose ${SINGULARITY_ROOTFS}/projects/moose/
+    # COPY CHAMOIS APP
     cp -r chamois ${SINGULARITY_ROOTFS}/projects/chamois/
+    # COPY BFTUSERLIBRARY FOR CONSTITUTIVE MODELS
     cp -r bftUserLibrary ${SINGULARITY_ROOTFS}/projects/bftUserLibrary/
 %post
     #################################################################################
@@ -21,7 +24,7 @@ From: centos:8
 
     #################################################################################
     #                                                                               #
-    #                               GCC 9.2                                         #
+    #                               GCC 9                                           #
     #                                                                               #
     #################################################################################
     dnf -y install gcc-toolset-9-gcc gcc-toolset-9-gcc-c++ gcc-toolset-9-gcc-gfortran 
@@ -42,7 +45,7 @@ From: centos:8
 
     #################################################################################
     #                                                                               #
-    #                               LATEST EIGEN                                    #
+    #                               EIGEN LATEST                                    #
     #                                                                               #
     #################################################################################
     git clone https://gitlab.com/libeigen/eigen.git
@@ -58,7 +61,6 @@ From: centos:8
     #                                                                               #
     #################################################################################
     dnf install -y python38 python38-devel.x86_64
-    # ln -s /usr/bin/python3 /usr/bin/python 
 
     #################################################################################
     #                                                                               #
@@ -88,8 +90,8 @@ From: centos:8
 
     #################################################################################
     #                               BUILD PETSC                                     #
-    #                               BUILD LIBMESH (OPT ONLY)                        #
-    #                               BUILD MOOSE TESTS                               #
+    #           (1)                 BUILD LIBMESH                                   #
+    #                               (LIBMESH OPT ONLY)                              #
     #################################################################################
     cd /projects/moose
     ./scripts/update_and_rebuild_petsc.sh
@@ -97,7 +99,7 @@ From: centos:8
 
     #################################################################################
     #                                                                               #
-    #                               BUILD UIBK MATERIALS                            #
+    #           (2)                 BUILD BFTUSERLIBRARY                            #
     #                                                                               #
     #################################################################################
     cd /projects/bftUserLibrary
@@ -106,18 +108,12 @@ From: centos:8
 
     #################################################################################
     #                                                                               #
-    #                               BUILD CHAMOIS                                   #
+    #           (3)                 BUILD CHAMOIS                                   #
     #                                                                               #
     #################################################################################
     cd /projects/chamois
     make clean
     BFT_USER_LIBRARY=/projects/bftUserLibrary make -j8
-
-    #################################################################################
-    #                                                                               #
-    #                               FINISH                                          #
-    #                                                                               #
-    #################################################################################
 
 %environment
     # LOCALE
@@ -136,8 +132,8 @@ From: centos:8
     export F77=mpif77
     export FC=mpif90
 
-    # ENSURE THAT NOT OPENMP PARALLELISM IS USED
-    # USUALLY A GOOD IDEA FOR MPI PARALLELISM
+    # ENSURE THAT NO OPENMP PARALLELISM IS USED
+    # THIS USUALLY A GOOD IDEA FOR MPI PARALLELISM
     export OMP_NUM_THREADS=1
 
 %labels
