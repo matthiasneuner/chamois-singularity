@@ -1,7 +1,7 @@
 BootStrap: docker
 From: centos:8
 %setup
-    # THESE ARE DIRECTORIES REQUIRED FOR UIBK BINDS
+    # THESE ARE DIRECTORIES REQUIRED FOR COMMON HPC BINDS
     mkdir $SINGULARITY_ROOTFS/scratch
     mkdir $SINGULARITY_ROOTFS/data
 
@@ -9,18 +9,19 @@ From: centos:8
     mkdir $SINGULARITY_ROOTFS/projects
 
     # COPY MOOSE
-    cp -r moose ${SINGULARITY_ROOTFS}/projects/moose/
+    cp -r ${MOOSE_DIR} ${SINGULARITY_ROOTFS}/projects/moose/
     # COPY CHAMOIS APP
-    cp -r chamois ${SINGULARITY_ROOTFS}/projects/chamois/
-    # COPY BFTUSERLIBRARY FOR CONSTITUTIVE MODELS
-    cp -r bftUserLibrary ${SINGULARITY_ROOTFS}/projects/bftUserLibrary/
+    cp -r ${CHAMOIS_DIR} ${SINGULARITY_ROOTFS}/projects/chamois/
+    # COPY MARMOT FOR CONSTITUTIVE MODELS
+    cp -r ${MARMOT_DIR} ${SINGULARITY_ROOTFS}/projects/marmot/
 %post
     #################################################################################
     #                                                                               #
     #                               BASIC SOFTWARE                                  #
     #                                                                               #
     #################################################################################
-    dnf install -y gvim vim wget make git bison flex unzip libtirpc libtirpc-devel openssl-devel infiniband-diags rdma-core-devel
+    dnf install -y gvim vim wget make git bison flex unzip libtirpc libtirpc-devel \
+        openssl-devel infiniband-diags rdma-core-devel
 
     #################################################################################
     #                                                                               #
@@ -94,17 +95,24 @@ From: centos:8
     #                               (LIBMESH OPT ONLY)                              #
     #################################################################################
     cd /projects/moose
-    ./scripts/update_and_rebuild_petsc.sh
+                ./scripts/update_and_rebuild_petsc.sh
     METHODS=opt ./scripts/update_and_rebuild_libmesh.sh
 
     #################################################################################
     #                                                                               #
-    #           (2)                 BUILD BFTUSERLIBRARY                            #
+    #           (2)                 BUILD MARMOT                                    #
     #                                                                               #
     #################################################################################
-    cd /projects/bftUserLibrary
-    cmake .
-    make -j8
+    cd /projects/marmot
+    git clean -x -f
+    mkdir build_centos8_gcc9
+    cd build_centos8_gcc9
+    cmake \
+        -DCORE_MODULES='MarmotMechanicsCore' \
+        -DMATERIAL_MODULES='all' \
+        -DELEMENT_MODULES='none' \
+        ../
+    make -j8 install
 
     #################################################################################
     #                                                                               #
@@ -112,8 +120,8 @@ From: centos:8
     #                                                                               #
     #################################################################################
     cd /projects/chamois
-    make clean
-    BFT_USER_LIBRARY=/projects/bftUserLibrary make -j8
+    git clean -x -f
+    make -j8
 
 %environment
     # LOCALE
@@ -132,8 +140,8 @@ From: centos:8
     export F77=mpif77
     export FC=mpif90
 
-    # ENSURE THAT NO OPENMP PARALLELISM IS USED
-    # THIS USUALLY A GOOD IDEA FOR MPI PARALLELISM
+    # ENSURE THAT NO OPENMP PARALLELIZATION IS USED
+    # THIS USUALLY A GOOD IDEA FOR MPI PARALLELIZATION
     export OMP_NUM_THREADS=1
 
 %labels
