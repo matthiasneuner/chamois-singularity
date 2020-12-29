@@ -1,5 +1,5 @@
 BootStrap: docker
-From: centos:8
+From: debian:bullseye
 %setup
     # THESE ARE DIRECTORIES REQUIRED FOR COMMON HPC BINDS
     mkdir $SINGULARITY_ROOTFS/scratch
@@ -17,72 +17,85 @@ From: centos:8
 %post
     #################################################################################
     #                                                                               #
+    #                               MAKE PARALLEL JOBS                              #
+    #                                                                               #
+    #################################################################################
+    if  [ -n "${MAKE_JOBS+set}" ];
+    then
+        echo "Using ${MAKE_JOBS} make jobs"
+    else
+        MAKE_JOBS=1
+        echo "Using ${MAKE_JOBS} make jobs"
+        echo "Set \$SINGULARITYENV_MAKE_JOBS to determine the number of make jobs"
+    fi
+
+    #################################################################################
+    #                                                                               #
     #                               BASIC SOFTWARE                                  #
     #                                                                               #
     #################################################################################
-    dnf install -y gvim vim wget make git bison flex unzip libtirpc libtirpc-devel \
-        openssl-devel infiniband-diags rdma-core-devel
+    apt-get update
+    apt-get -y upgrade
+
+    apt-get -y install apt-utils apt-file vim less gcc g++ make wget openssh-client \
+        flex bison gfortran git cmake infiniband-diags ibverbs-utils libibverbs-dev
 
     #################################################################################
     #                                                                               #
-    #                               GCC 9                                           #
+    #                               PYTHON 3.9                                      #
     #                                                                               #
     #################################################################################
-    dnf -y install gcc-toolset-9-gcc gcc-toolset-9-gcc-c++ gcc-toolset-9-gcc-gfortran 
-    source /opt/rh/gcc-toolset-9/enable
-
-    #################################################################################
-    #                                                                               #
-    #                               CMAKE 3.18                                      #
-    #                                                                               #
-    #################################################################################
-    cd $SINGULARITY_TMPDIR
-    wget https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4.tar.gz
-    tar xzf cmake-3.18.4.tar.gz
-    cd cmake-3.18.4
-    ./configure
-    make 
-    make install
+    apt-get -y install python3 python-dev python3-distutils python3-apt
 
     #################################################################################
     #                                                                               #
     #                               EIGEN LATEST                                    #
     #                                                                               #
     #################################################################################
+    cd $SINGULARITY_TMPDIR
     git clone https://gitlab.com/libeigen/eigen.git
     cd eigen
     mkdir build
     cd build
-    cmake ../
+    cmake -DBUILD_TESTING=OFF ../
     make install
 
     #################################################################################
     #                                                                               #
-    #                               PYTHON 3.8                                      #
+    #                               FASTOR LATEST                                   #
     #                                                                               #
     #################################################################################
-    dnf install -y python38 python38-devel.x86_64
+    cd $SINGULARITY_TMPDIR
+    git clone https://github.com/romeric/Fastor.git
+    cd Fastor
+    cmake -DBUILD_TESTING=OFF .
+    make install
 
     #################################################################################
     #                                                                               #
     #                               OPENMPI 4.0.2                                   #
     #                                                                               #
     #################################################################################
-    dnf install -y openmpi openmpi-devel
+    cd $SINGULARITY_TMPDIR
+    wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.2.tar.gz
+    tar xzf openmpi-4.0.2.tar.gz
+    cd openmpi-4.0.2
+    ./configure --prefix=/usr/local
+    make -j $MAKE_JOBS install
+    ldconfig
 
     #################################################################################
     #                                                                               #
     #                               CLEANUP                                         #
     #                                                                               #
     #################################################################################
-    dnf clean all && rm -rf /var/cache/dnf
+    apt-get clean
 
     #################################################################################
     #                                                                               #
     #                               ENV. VARS                                       #
     #                                                                               #
     #################################################################################
-    export PATH=$PATH:/usr/lib64/openmpi/bin/
     export CC=mpicc
     export CXX=mpicxx
     export F90=mpif90
@@ -98,6 +111,12 @@ From: centos:8
                 ./scripts/update_and_rebuild_petsc.sh
     METHODS=opt ./scripts/update_and_rebuild_libmesh.sh
 
+    if  [ -n "${DELETE_GIT+set}" ];
+    then
+        echo "Deleting .git repositories"
+        find . -maxdepth 10 -type d -name '.git' -prune  -exec rm -rf {} +
+    fi
+
     #################################################################################
     #                                                                               #
     #           (2)                 BUILD MARMOT                                    #
@@ -105,14 +124,14 @@ From: centos:8
     #################################################################################
     cd /projects/marmot
     git clean -x -f
-    mkdir build_centos8_gcc9
-    cd build_centos8_gcc9
+    mkdir build_debian11_gcc10
+    cd build_debian11_gcc10
     cmake \
-        -DCORE_MODULES='MarmotMechanicsCore' \
+        -DCORE_MODULES='MarmotMechanicsCore;MarmotCosseratCore;MarmotMicromorphicCore' \
         -DMATERIAL_MODULES='all' \
         -DELEMENT_MODULES='none' \
         ../
-    make -j8 install
+    make -j $MAKE_JOBS install
 
     #################################################################################
     #                                                                               #
@@ -121,17 +140,12 @@ From: centos:8
     #################################################################################
     cd /projects/chamois
     git clean -x -f
-    make -j8
+    make clean
+    make -j $MAKE_JOBS
 
 %environment
     # LOCALE
     export LC_ALL=C
-
-    # MAKE OPENMPI AVAILABLE
-    export PATH=$PATH:/usr/lib64/openmpi/bin/
-
-    # MAKE GCC 9 AVAILABLE
-    source /opt/rh/gcc-toolset-9/enable
 
     # SET COMPILERS FOR MOOSE
     export CC=mpicc

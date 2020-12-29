@@ -1,0 +1,182 @@
+BootStrap: docker
+From: centos:8
+%setup
+    # THESE ARE DIRECTORIES REQUIRED FOR COMMON HPC BINDS
+    mkdir $SINGULARITY_ROOTFS/scratch
+    mkdir $SINGULARITY_ROOTFS/data
+
+    # THIS IS THE DIRECTORY FOR ALL MOOSE RELATED BINARIES
+    mkdir $SINGULARITY_ROOTFS/projects
+
+    # COPY MOOSE
+    cp -r ${MOOSE_DIR} ${SINGULARITY_ROOTFS}/projects/moose/
+    # COPY CHAMOIS APP
+    cp -r ${CHAMOIS_DIR} ${SINGULARITY_ROOTFS}/projects/chamois/
+    # COPY MARMOT FOR CONSTITUTIVE MODELS
+    cp -r ${MARMOT_DIR} ${SINGULARITY_ROOTFS}/projects/marmot/
+%post
+    #################################################################################
+    #                                                                               #
+    #                               MAKE PARALLEL JOBS                              #
+    #                                                                               #
+    #################################################################################
+    if  [[ -v MAKE_JOBS ]];
+    then
+        echo "Using ${MAKE_JOBS} make jobs"
+    else
+        MAKE_JOBS=1
+        echo "Using ${MAKE_JOBS} make jobs"
+        echo "Set \$SINGULARITYENV_MAKE_JOBS to determine the number of make jobs"
+    fi
+
+    #################################################################################
+    #                                                                               #
+    #                               BASIC SOFTWARE                                  #
+    #                                                                               #
+    #################################################################################
+    dnf install -y gvim vim wget make git bison flex unzip libtirpc libtirpc-devel \
+        openssl-devel infiniband-diags rdma-core-devel
+
+    #################################################################################
+    #                                                                               #
+    #                               PYTHON 3.8                                      #
+    #                                                                               #
+    #################################################################################
+    dnf install -y python38 python38-devel
+
+    #################################################################################
+    #                                                                               #
+    #                               GCC 9                                           #
+    #                                                                               #
+    #################################################################################
+    dnf -y install gcc-toolset-9-gcc gcc-toolset-9-gcc-c++ gcc-toolset-9-gcc-gfortran 
+    source /opt/rh/gcc-toolset-9/enable
+
+    #################################################################################
+    #                                                                               #
+    #                               CMAKE 3.18                                      #
+    #                                                                               #
+    #################################################################################
+    cd $SINGULARITY_TMPDIR
+    wget https://github.com/Kitware/CMake/releases/download/v3.18.4/cmake-3.18.4.tar.gz
+    tar xzf cmake-3.18.4.tar.gz
+    cd cmake-3.18.4
+    ./configure
+    make -j $MAKE_JOBS install
+
+    #################################################################################
+    #                                                                               #
+    #                               EIGEN LATEST                                    #
+    #                                                                               #
+    #################################################################################
+    cd $SINGULARITY_TMPDIR
+    git clone https://gitlab.com/libeigen/eigen.git
+    cd eigen
+    mkdir build
+    cd build
+    cmake -DBUILD_TESTING=OFF ../
+    make install
+
+    #################################################################################
+    #                                                                               #
+    #                               FASTOR LATEST                                   #
+    #                                                                               #
+    #################################################################################
+    cd $SINGULARITY_TMPDIR
+    git clone https://github.com/romeric/Fastor.git
+    cd Fastor
+    cmake -DBUILD_TESTING=OFF .
+    make install
+
+    #################################################################################
+    #                                                                               #
+    #                               OPENMPI 4.0.2                                   #
+    #                                                                               #
+    #################################################################################
+    cd $SINGULARITY_TMPDIR
+    wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.2.tar.gz
+    tar xzf openmpi-4.0.2.tar.gz
+    cd openmpi-4.0.2
+    ./configure --prefix=/usr/local
+    make -j $MAKE_JOBS install
+
+    #################################################################################
+    #                                                                               #
+    #                               CLEANUP                                         #
+    #                                                                               #
+    #################################################################################
+    dnf clean all && rm -rf /var/cache/dnf
+
+    #################################################################################
+    #                                                                               #
+    #                               ENV. VARS                                       #
+    #                                                                               #
+    #################################################################################
+    export CC=mpicc
+    export CXX=mpicxx
+    export F90=mpif90
+    export F77=mpif77
+    export FC=mpif90
+
+    #################################################################################
+    #                               BUILD PETSC                                     #
+    #           (1)                 BUILD LIBMESH                                   #
+    #                               (LIBMESH OPT ONLY)                              #
+    #################################################################################
+    cd /projects/moose
+                ./scripts/update_and_rebuild_petsc.sh
+    METHODS=opt ./scripts/update_and_rebuild_libmesh.sh
+
+    if  [[ -v DELETE_GIT ]];
+    then
+        echo "Deleting .git repositories"
+        find . -maxdepth 10 -type d -name '.git' -prune  -exec rm -rf {} +
+    fi
+
+    #################################################################################
+    #                                                                               #
+    #           (2)                 BUILD MARMOT                                    #
+    #                                                                               #
+    #################################################################################
+    cd /projects/marmot
+    git clean -x -f
+    mkdir build_centos8_gcc9
+    cd build_centos8_gcc9
+    cmake \
+        -DCORE_MODULES='MarmotMechanicsCore;MarmotCosseratCore;MarmotMicromorphicCore' \
+        -DMATERIAL_MODULES='all' \
+        -DELEMENT_MODULES='none' \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+        ../
+    make -j $MAKE_JOBS install
+
+    #################################################################################
+    #                                                                               #
+    #           (3)                 BUILD CHAMOIS                                   #
+    #                                                                               #
+    #################################################################################
+    cd /projects/chamois
+    git clean -x -f
+    make clean
+    make -j $MAKE_JOBS
+
+%environment
+    # LOCALE
+    export LC_ALL=C
+
+    # MAKE GCC 9 AVAILABLE
+    source /opt/rh/gcc-toolset-9/enable
+
+    # SET COMPILERS FOR MOOSE
+    export CC=mpicc
+    export CXX=mpicxx
+    export F90=mpif90
+    export F77=mpif77
+    export FC=mpif90
+
+    # ENSURE THAT NO OPENMP PARALLELIZATION IS USED
+    # THIS USUALLY A GOOD IDEA FOR MPI PARALLELIZATION
+    export OMP_NUM_THREADS=1
+
+%labels
+    Maintainer matthiasneuner
