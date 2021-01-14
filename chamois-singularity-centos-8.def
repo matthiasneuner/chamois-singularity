@@ -35,7 +35,7 @@ From: centos:8
     #                                                                               #
     #################################################################################
     dnf install -y gvim vim wget make git bison flex unzip libtirpc libtirpc-devel \
-        openssl-devel infiniband-diags rdma-core-devel
+        openssl-devel infiniband-diags rdma-core-devel libpng-devel
 
     #################################################################################
     #                                                                               #
@@ -124,14 +124,9 @@ From: centos:8
     #                               (LIBMESH OPT ONLY)                              #
     #################################################################################
     cd /projects/moose
+                ./scripts/clobber.py .
                 ./scripts/update_and_rebuild_petsc.sh
     METHODS=opt ./scripts/update_and_rebuild_libmesh.sh
-
-    if  [[ -v DELETE_GIT ]];
-    then
-        echo "Deleting .git repositories"
-        find . -maxdepth 10 -type d -name '.git' -prune  -exec rm -rf {} +
-    fi
 
     #################################################################################
     #                                                                               #
@@ -139,7 +134,6 @@ From: centos:8
     #                                                                               #
     #################################################################################
     cd /projects/marmot
-    git clean -x -f
     mkdir build_centos8_gcc9
     cd build_centos8_gcc9
     cmake \
@@ -147,18 +141,31 @@ From: centos:8
         -DMATERIAL_MODULES='all' \
         -DELEMENT_MODULES='none' \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
+        -DCMAKE_INSTALL_LIBDIR=lib \
         ../
     make -j $MAKE_JOBS install
 
-    #################################################################################
-    #                                                                               #
-    #           (3)                 BUILD CHAMOIS                                   #
-    #                                                                               #
-    #################################################################################
-    cd /projects/chamois
-    git clean -x -f
-    make clean
-    make -j $MAKE_JOBS
+     #################################################################################
+     #                                                                               #
+     #           (3)                 BUILD CHAMOIS                                   #
+     #                                                                               #
+     #################################################################################
+     cd /projects/chamois
+     /projects/moose/scripts/clobber.py .
+     make clean
+     make -B -j $MAKE_JOBS
+
+     #################################################################################
+     #                                                                               #
+     #           (optional)          DELETE GIT REPOS                                #
+     #                                                                               #
+     #################################################################################
+     if  [[ -v DELETE_GIT ]];
+     then
+         cd /projects/moose
+         echo "Deleting .git repositories"
+         find . -maxdepth 10 -type d -name '.git' -prune  -exec rm -rf {} +
+     fi
 
 %environment
     # LOCALE

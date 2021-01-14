@@ -38,7 +38,8 @@ From: debian:bullseye
     apt-get -y upgrade
 
     apt-get -y install apt-utils apt-file vim less gcc g++ make wget openssh-client \
-        flex bison gfortran git cmake infiniband-diags ibverbs-utils libibverbs-dev
+        flex bison gfortran git cmake infiniband-diags ibverbs-utils libibverbs-dev \
+        libpng-dev
 
     #################################################################################
     #                                                                               #
@@ -111,19 +112,12 @@ From: debian:bullseye
                 ./scripts/update_and_rebuild_petsc.sh
     METHODS=opt ./scripts/update_and_rebuild_libmesh.sh
 
-    if  [ -n "${DELETE_GIT+set}" ];
-    then
-        echo "Deleting .git repositories"
-        find . -maxdepth 10 -type d -name '.git' -prune  -exec rm -rf {} +
-    fi
-
     #################################################################################
     #                                                                               #
     #           (2)                 BUILD MARMOT                                    #
     #                                                                               #
     #################################################################################
     cd /projects/marmot
-    git clean -x -f
     mkdir build_debian11_gcc10
     cd build_debian11_gcc10
     cmake \
@@ -139,9 +133,20 @@ From: debian:bullseye
     #                                                                               #
     #################################################################################
     cd /projects/chamois
-    git clean -x -f
     make clean
-    make -j $MAKE_JOBS
+    make -B -j $MAKE_JOBS
+
+    #################################################################################
+    #                                                                               #
+    #           (optional)          DELETE GIT REPOS                                #
+    #                                                                               #
+    #################################################################################
+    if  [ -n "${DELETE_GIT+set}" ];
+    then
+        cd /projects/moose
+        echo "Deleting .git repositories"
+        find . -maxdepth 10 -type d -name '.git' -prune  -exec rm -rf {} +
+    fi
 
 %environment
     # LOCALE
