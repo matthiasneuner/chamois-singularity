@@ -137,7 +137,7 @@ From: centos:8
     mkdir build_centos8_gcc9
     cd build_centos8_gcc9
     cmake \
-        -DCORE_MODULES='MarmotMechanicsCore;MarmotCosseratCore;MarmotMicromorphicCore' \
+        -DCORE_MODULES='MarmotMathCore;MarmotMechanicsCore;MarmotCosseratCore;MarmotMicromorphicCore' \
         -DMATERIAL_MODULES='all' \
         -DELEMENT_MODULES='none' \
         -DCMAKE_INSTALL_PREFIX=/usr/local \
